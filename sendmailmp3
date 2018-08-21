@@ -1,7 +1,7 @@
 #! /bin/sh
 # Asterisk voicemail attachment conversion script, including voice recognition
 # Use Voice Recognition Engine provided by IBM Bluemix Sppech-to-Text API
-
+#
 # Revision history :
 # 22/11/2010 - V1.0 - Creation by N. Bernaerts
 # 07/02/2012 - V1.1 - Add handling of mails without attachment (thanks to Paul Thompson)
@@ -10,7 +10,11 @@
 # 01/08/2012 - V1.4 - Add PATH definition to avoid any problem (thanks to Christopher Wolff)
 # 01/06/2013 - V1.5 - Improved call quality of MP3
 # 10/11/2014 - V1.6 - TB Sampson fix for iPhone playback too: http://nerd.bz/1vTN3Hq
-# 12/03/2017 - V2.3 - modified for use with IBM Bluemix Speech-to-Text API (thanks to Jason Klein and Ward Mundy & Associates LLC)
+# 31/01/2013 - V2.0 - Add Google Voice Recognition feature (thanks to Daniel Dainty idea and sponsoring :-)
+# 04/02/2013 - V2.1 - Handle error in case of voicemail too long to be converted
+# 16/07/2015 - V2.2 - Handle natively GSM WAV (thanks to Michael Munger)
+# 11/03/2017 - V2.3 - modified for use with IBM Bluemix Speech-to-Text API (thanks to Jason Klein and Ward Mundy & Associates LLC)
+# 01/17/2018 - V2.4 - modified "echo -e" for proper treatment of linefeeds in messages
 
 # Special thanks: https://jrklein.com/2015/08/17/asterisk-voicemail-transcription-via-ibm-bluemix-speech-to-text-api/
 
@@ -28,6 +32,8 @@
 API_USERNAME="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
 API_PASSWORD="XXXXXXXXXXXX"
 
+# set language for voice recognition (en-US, en-GB, fr-FR, ...)
+LANGUAGE="en-US"
 
 # set PATH
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -43,7 +49,7 @@ cd $TMPDIR
 cat >> stream.org
 
 # get the boundary
-BOUNDARY=`grep "boundary=" stream.org | cut -d'"' -f 2`
+BOUNDARY=$(grep "boundary=" stream.org | cut -d'"' -f 2)
 
 # cut the file into parts
 # stream.part - header before the boundary
@@ -54,7 +60,7 @@ BOUNDARY=`grep "boundary=" stream.org | cut -d'"' -f 2`
 awk '/'$BOUNDARY'/{i++}{print > "stream.part"i}' stream.org
 
 # if mail is having no audio attachment (plain text)
-PLAINTEXT=`cat stream.part1 | grep 'plain'`
+PLAINTEXT=$(cat stream.part1 | grep 'plain')
 if [ "$PLAINTEXT" != "" ]
 then
 
@@ -84,9 +90,9 @@ else
   base64 stream.part3.mp3 > stream.part3.mp3.base64
 
   # generate the new mp3 attachment header
-  # change Type: audio/x-wav to Type: audio/mpeg
+  # change Type: audio/x-wav or audio/x-WAV to Type: audio/mpeg
   # change name="msg----.wav" to name="msg----.mp3"
-  sed 's/x-wav/mpeg/g' stream.part3.wav.head | sed 's/.wav/.mp3/g' > stream.part3.mp3.head
+  sed 's/x-[wW][aA][vV]/mpeg/g' stream.part3.wav.head | sed 's/.[wW][aA][vV]/.mp3/g' > stream.part3.mp3.head
 
 CURL_OPTS=""
 #API_USERNAME="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
@@ -105,8 +111,31 @@ TRANSCRIPT=`cat audio.txt | grep transcript | sed 's#^.*"transcript": "##g' | se
   # generate first part of mail body, converting it to LF only
   mv stream.part stream.new
   cat stream.part1 >> stream.new
-  cat stream.part2 >> stream.new
-  echo "\r\n\r\nMessage contents: $TRANSCRIPT" >> stream.new
+<<<<<<< HEAD
+  # Remove last line of part2
+  sed '$d' < stream.part2 >> stream.new
+
+  # beginning of transcription section
+  echo "---" >> stream.new
+
+# if audio attachment is too big
+#  if [ "$FILETOOBIG" != "" ]
+#  then
+#    # error message
+#    echo "Voice message is too long to be transcripted." >> stream.new
+#  else
+#    # append result of transcription
+#    echo "Message seems to be ( $CONFIDENCE% confidence ) :" >> stream.new
+#    echo "$TRANSCRIPT" >> stream.new
+#  fi
+
+  # end of message body
+  # re-insert last line of part2
+  tail -1 stream.part2 >> stream.new
+
+  echo -e "\r\n\r\nMessage contents: $TRANSCRIPT" >> stream.new
+
+  # append mp3 header
   cat stream.part3.mp3.head >> stream.new
   dos2unix -o stream.new
 
@@ -122,12 +151,13 @@ TRANSCRIPT=`cat audio.txt | grep transcript | sed 's#^.*"transcript": "##g' | se
   cat stream.tmp >> stream.new
 
 fi
-
+ 
 # send the mail thru sendmail
-cat stream.new | sendmail -t
-
+cat stream.new | sendmail.orig -t
+ 
 # go back to original directory
 popd
-
+ 
 # remove all temporary files and temporary directory
 rm -Rf $TMPDIR
+

@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 # Asterisk voicemail attachment conversion script, including voice recognition
 # Use Voice Recognition Engine provided by IBM Bluemix Sppech-to-Text API
 
@@ -14,20 +14,8 @@
 
 # Special thanks: https://jrklein.com/2015/08/17/asterisk-voicemail-transcription-via-ibm-bluemix-speech-to-text-api/
 
-# set credentials for IBM Bluemix Speech-to-Text API
-# Obtain Bluemix credentials here: https://www.ibm.com/watson/developercloud/doc/common/getting-started-credentials.html
-# 1. Create Bluemix account here: https://console.ng.bluemix.net/registration/?target=/catalog/%3fcategory=watson
-# 2, Confirm registration by replying to email
-# 3. Login to Bluemix: https://console.ng.bluemix.net/login?state=/catalog/?category=watson
-# 4. Agree to T&C, name your organization, and name your space (STT)
-# 5. Choose Watson Speech to Text service and click Create
-# 6. When Speech to Text-kb opens, click Service Credentials tab
-# 7. In Actions column, click View Credentials and copy your username and password
-# 8. Insert deciphered Bluemix API username and password below:
-# 9. Logout by clicking on image icon in upper right corner of dialog window
-API_USERNAME="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
-API_PASSWORD="XXXXXXXXXXXX"
-
+# set language for voice recognition (en-US, en-GB, fr-FR, ...)
+LANGUAGE="en-US"
 
 # set PATH
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -88,25 +76,30 @@ else
   # change name="msg----.wav" to name="msg----.mp3"
   sed 's/x-wav/mpeg/g' stream.part3.wav.head | sed 's/.wav/.mp3/g' > stream.part3.mp3.head
 
-CURL_OPTS=""
-#API_USERNAME="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
-#API_PASSWORD="XXXXXXXXXXXX"
+  # cleanup wav file for Google speech recognition
+  #sox stream.part3.wav -V1 -r 16000 -b 16 -c 1 audio.wav norm vad -p 0.5 reverse vad -p 0.5 reverse lowpass -2 2500
+  cp  stream.part3.wav audio.wav
 
-# Send WAV to Watson Speech to Text API. Must use "Narrowband" (aka 8k) model since WAV is 8k sample.
-curl -s $CURL_OPTS -k -u $API_USERNAME:$API_PASSWORD -X POST \
-    --limit-rate 40000 \
-    --header "Content-Type: audio/wav" \
-    --data-binary @stream.part3.wav \
-    "https://stream.watsonplatform.net/speech-to-text/api/v1/recognize?continuous=true&model=en-US_NarrowbandModel" 1>audio.txt
+  # call Multi-engine translation
+  wav_transcribe.py audio.wav > audio.txt 2>&1
 
-# Extract transcript results from JSON response
-TRANSCRIPT=`cat audio.txt | grep transcript | sed 's#^.*"transcript": "##g' | sed 's# "$##g'`
+  # extract the transcript and confidence results
+  TRANSCRIPT=`cat audio.txt`
 
   # generate first part of mail body, converting it to LF only
   mv stream.part stream.new
   cat stream.part1 >> stream.new
-  cat stream.part2 >> stream.new
-  echo "\r\n\r\nMessage contents: $TRANSCRIPT" >> stream.new
+  #cat stream.part2 >> stream.new
+  sed '$d' < stream.part2 >> stream.new
+
+  # beginning of transcription section
+
+  echo $TRANSCRIPT >> stream.new
+  
+  # end of message body
+  tail -1 stream.part2 >> stream.new
+
+  # append mp3 header
   cat stream.part3.mp3.head >> stream.new
   dos2unix -o stream.new
 
@@ -120,7 +113,6 @@ TRANSCRIPT=`cat audio.txt | grep transcript | sed 's#^.*"transcript": "##g' | se
   cat stream.part4 >> stream.tmp
   dos2unix -o stream.tmp
   cat stream.tmp >> stream.new
-
 fi
 
 # send the mail thru sendmail

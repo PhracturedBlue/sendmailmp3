@@ -93,7 +93,6 @@ else
   # generate first part of mail body, converting it to LF only
   mv stream.part stream.new
   cat stream.part1 >> stream.new
-<<<<<<< HEAD
 
   # Remove last line of part2
   sed '$d' < stream.part2 >> stream.new

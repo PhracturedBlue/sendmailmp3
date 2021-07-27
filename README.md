@@ -19,3 +19,32 @@ There are 2 independent transcription solutions provided:
 All future development will be done on server.py.
 
 The `Dockerfile.server` can be used to ease the installation of DeepSpeech.
+
+## An example voicemail.conf may look something like
+```
+[general]
+format=wav|wav49
+mailcmd=/usr/local/sbin/sendmailmp3
+
+attach=yes
+envelope=yes
+forcegreetings=no
+forcename=yes
+moveheard=no
+nextaftercmd=no
+operator=no
+pbxskip=no
+pollfreq=30
+pollmailboxes=yes
+review=no
+saycid=no
+sayduration=yes
+searchcontexts=no
+sendvoicemail=yes
+tempgreetwarn=yes
+usedirectory=yes
+emailbody=\n\tHi ${VM_NAME},\n\n\tYou have a ${VM_DUR} long new voicemail message (number ${VM_MSGNUM})\nfrom ${VM_CIDNAME} (${VM_CIDNUM}), on ${VM_DATE}\nso you might want to check it when you get a chance.\n\n
+maxmsg=1000
+[default]
+vm => 123,Analog Phone,{{ mailto }},,attach=yes|delete=no|envelope=no|saycid=no|vmcontext=default
+```

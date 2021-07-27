@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /bin/sh
 # Asterisk voicemail attachment conversion script, including voice recognition
 # Use Voice Recognition Engine provided by IBM Bluemix Sppech-to-Text API
 #
@@ -15,17 +15,19 @@
 # 16/07/2015 - V2.2 - Handle natively GSM WAV (thanks to Michael Munger)
 # 11/03/2017 - V2.3 - modified for use with IBM Bluemix Speech-to-Text API (thanks to Jason Klein and Ward Mundy & Associates LLC)
 # 01/17/2018 - V2.4 - modified "echo -e" for proper treatment of linefeeds in messages
+# 07/26/2021 - V2.5 - support using busybox 'dash' shell.  Support transcription via a service
 
 # Special thanks: https://jrklein.com/2015/08/17/asterisk-voicemail-transcription-via-ibm-bluemix-speech-to-text-api/
 
 # set language for voice recognition (en-US, en-GB, fr-FR, ...)
 LANGUAGE="en-US"
+# TRANSCRIBE_URL="http://transcribe:3337/text
 
 # set PATH
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # save the current directory
-pushd .
+origcwd=$(pwd)
 
 # create a temporary directory and cd to it
 TMPDIR=$(mktemp -d)
@@ -63,8 +65,8 @@ else
   sed '1,6d' stream.part3 > stream.part3.wav.base64
 
   # convert the base64 file to a wav file
-  dos2unix -o stream.part3.wav.base64
-  base64 -di stream.part3.wav.base64 > stream.part3.wav
+  dos2unix stream.part3.wav.base64
+  base64 -d stream.part3.wav.base64 > stream.part3.wav
 
   # convert wav file to mp3 file
   # -b 24 is using CBR, giving better compatibility on smartphones (you can use -b 32 to increase quality)
@@ -85,47 +87,47 @@ else
   cp  stream.part3.wav audio.wav
 
   # call Multi-engine translation
-  wav_transcribe.py audio.wav > audio.txt 2>&1
-
-  # extract the transcript and confidence results
-  TRANSCRIPT=`cat audio.txt`
+  if [ -z $TRANSCRIBE_URL ]; then
+      wav_transcribe.py audio.wav > audio.txt 2>&1
+  else
+      curl -s -XPOST --data-binary @audio.wav ${TRANSCRIBE_URL} > audio.txt 2>&1
+  fi
 
   # generate first part of mail body, converting it to LF only
   mv stream.part stream.new
   cat stream.part1 >> stream.new
-
-  # Remove last line of part2
+  #cat stream.part2 >> stream.new
   sed '$d' < stream.part2 >> stream.new
 
   # beginning of transcription section
-  echo $TRANSCRIPT >> stream.new
-
+  #echo $TRANSCRIPT >> stream.new
+  cat audio.txt >> stream.new
+  
   # end of message body
-  # re-insert last line of part2
   tail -1 stream.part2 >> stream.new
 
   # append mp3 header
   cat stream.part3.mp3.head >> stream.new
-  dos2unix -o stream.new
+  #dos2unix stream.new
 
   # append base64 mp3 to mail body, keeping CRLF
-  unix2dos -o stream.part3.mp3.base64
+  unix2dos stream.part3.mp3.base64
   cat stream.part3.mp3.base64 >> stream.new
 
   # append end of mail body, converting it to LF only
   echo "" >> stream.tmp
   echo "" >> stream.tmp
   cat stream.part4 >> stream.tmp
-  dos2unix -o stream.tmp
+  dos2unix stream.tmp
   cat stream.tmp >> stream.new
 fi
- 
+
 # send the mail thru sendmail
-cat stream.new | sendmail.orig -t
- 
+cat stream.new | sendmail -t
+
 # go back to original directory
-popd
- 
+cd $origcwd
+
 # remove all temporary files and temporary directory
 rm -Rf $TMPDIR
 

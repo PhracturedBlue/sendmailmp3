@@ -1,0 +1,38 @@
+ARG ALPINE_VER
+FROM python:3.7-slim-buster
+
+# This hack is widely applied to avoid python printing issues in docker containers.
+# See: https://github.com/Docker-Hub-frolvlad/docker-alpine-python3/pull/13
+ENV PYTHONUNBUFFERED=1
+
+RUN true \
+    && apt-get update \
+    && apt-get install -y sox wget\
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install numpy
+ARG DS_VER
+
+RUN _ARCH= && _arch="$(uname -m)" && \
+    case "${_arch##*-}" in \
+      amd64) _ARCH='amd64';; \
+      arm64) _ARCH='aarch64';; \
+      aarch64) _ARCH='aarch64';; \
+      armhf) _ARCH='armv7l';; \
+      armel) _ARCH='armv7l';; \
+      *)     echo "Unsupported architecture: ${_arch}"; exit 1;; \
+    esac && \
+    pip3 install https://github.com/mozilla/DeepSpeech/releases/download/v${DS_VER}/deepspeech-${DS_VER}-cp37-cp37m-linux_${_ARCH}.whl
+
+RUN mkdir /models
+RUN cd /models && wget https://github.com/mozilla/DeepSpeech/releases/download/v${DS_VER}/deepspeech-${DS_VER}-models.tflite
+RUN cd /models && wget https://github.com/mozilla/DeepSpeech/releases/download/v${DS_VER}/deepspeech-${DS_VER}-models.scorer
+
+COPY server.py /usr/local/bin/ds_server.py
+ENV DS_VER=${DS_VER}
+ENV GOOGLE_SR_KEY
+EXPOSE 3337
+
+ENTRYPOINT ["/bin/sh", "-c", "python /usr/local/bin/ds_server.py --model /models/deepspeech-${DS_VER}-models.tflite --scorer /models/deepspeech-${DS_VER}-models.scorer --google_key ${GOOGLE_SR_KEY}"]
+
